@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AutoVerse | Centered Pro</title>
+    <title>AutoVerse | Balanced Grid</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
@@ -13,156 +13,129 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
-        body { background: var(--bg); color: var(--text); min-height: 100vh; overflow: hidden; width: 100vw; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
 
-        /* Outer Wrapper to prevent cutting */
         .container { 
-            width: 100%;
-            max-width: 500px; /* Limits width on large screens to keep it looking like an app */
+            max-width: 1100px; 
             margin: 0 auto; 
-            padding: 15px; 
-            height: 100vh; 
-            display: flex; 
+            padding: 20px;
+            display: flex;
             flex-direction: column;
-            overflow: hidden;
+            gap: 20px;
         }
 
-        /* Top Navigation */
-        .language-tabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-bottom: 10px; padding: 5px 0; }
-        .language-tabs::-webkit-scrollbar { display: none; }
-        .language-tab { background: var(--glass); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-size: 0.85rem; }
+        /* GRID SYSTEM FOR LANDSCAPE */
+        @media (min-width: 850px) or (orientation: landscape) {
+            .main-content {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 25px;
+                align-items: stretch; /* Forces equal height */
+                height: 600px; /* Fixed height for both sides */
+            }
+            .music-player, .playlist-section {
+                height: 100%; /* Both containers will fill the 600px height */
+                margin: 0;
+            }
+        }
+
+        /* Top Sections */
+        .language-tabs { display: flex; gap: 10px; overflow-x: auto; margin-bottom: 15px; scrollbar-width: none; }
+        .language-tab { background: var(--glass); border: 1px solid var(--border); padding: 10px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-size: 0.9rem; }
         .language-tab.active { background: var(--accent); color: #000; font-weight: bold; }
-        
-        .search-container { position: relative; margin-bottom: 15px; width: 100%; }
-        .search-input { width: 100%; padding: 12px; background: var(--glass); border: 1px solid var(--border); border-radius: 12px; color: #fff; outline: none; }
-        .suggestions-box { position: absolute; top: 110%; left: 0; right: 0; background: #111; border-radius: 12px; z-index: 1000; display: none; border: 1px solid var(--border); }
 
-        /* CENTERED PLAYER AREA */
-        .main-content { 
-            flex: 1; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            width: 100%;
-        }
+        .search-container { position: relative; margin-bottom: 10px; }
+        .search-input { width: 100%; padding: 14px; background: var(--glass); border: 1px solid var(--border); border-radius: 12px; color: #fff; outline: none; }
+        .suggestions-box { position: absolute; top: 110%; left: 0; right: 0; background: #111; border-radius: 12px; z-index: 99; display: none; border: 1px solid var(--border); }
 
+        /* Left Side: Player */
         .music-player { 
             background: var(--glass); 
             border: 1px solid var(--border); 
-            border-radius: 32px; 
-            padding: 20px; 
-            width: 100%; /* Fill the container width */
-            height: 90%; /* Take most of the height */
-            display: flex; 
-            flex-direction: column; 
-            justify-content: space-around;
-            align-items: center;
+            border-radius: 24px; 
+            padding: 30px; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Keeps content centered vertically */
         }
-
-        /* DISPLAY AREA (ART vs LIST) */
-        .display-container { 
-            position: relative; 
-            width: 90%; 
-            aspect-ratio: 1; 
-            margin: 0 auto; 
-        }
-        
-        .album-art { width: 100%; height: 100%; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,217,255,0.1); transition: 0.3s; }
+        .album-art { width: 100%; aspect-ratio: 1; max-width: 260px; margin: 0 auto 20px; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,217,255,0.2); }
         .album-art img { width: 100%; height: 100%; object-fit: cover; }
-
-        .embedded-list { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(10, 10, 10, 0.98); border-radius: 24px; padding: 20px; 
-            display: none; flex-direction: column; border: 1px solid var(--border);
-            backdrop-filter: blur(10px);
-        }
-        .embedded-list h4 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; color: var(--accent); font-size: 1rem; }
-        .playlist-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; width: 100%; }
-
-        /* TOGGLE BUTTON */
-        .list-toggle-btn { 
-            background: var(--glass); border: 1px solid var(--border); color: #fff; 
-            padding: 10px 20px; border-radius: 12px; cursor: pointer; font-size: 0.9rem; 
-            transition: 0.3s; margin-bottom: 15px;
-        }
-        .list-toggle-btn.active-btn { background: var(--accent); color: #000; border-color: var(--accent); }
-
-        /* INFO & CONTROLS */
-        .info-section { width: 100%; text-align: center; }
-        .progress-section { width: 100%; margin-top: 10px; }
-        .progress-bar { width: 100%; height: 6px; background: #222; border-radius: 10px; cursor: pointer; }
+        
+        .progress-bar { width: 100%; height: 6px; background: #222; border-radius: 10px; margin: 20px 0 10px; cursor: pointer; }
         .progress-fill { height: 100%; background: var(--accent); width: 0%; border-radius: 10px; }
 
-        .controls { display: flex; justify-content: center; align-items: center; gap: 40px; margin-top: 20px; }
-        .play-btn { background: var(--accent); width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #000; font-size: 1.8rem; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 30px; margin-bottom: 20px; }
+        .play-btn { background: var(--accent); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #000; font-size: 1.6rem; cursor: pointer; }
+        
+        .volume-control { display: flex; align-items: center; gap: 10px; width: 80%; margin: 0 auto; opacity: 0.6; }
+        .volume-slider { flex: 1; accent-color: var(--accent); cursor: pointer; }
 
-        /* List Items */
-        .track-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; text-align: left; }
-        .track-item.active { background: var(--accent); color: #000; }
-        .track-item img { width: 40px; height: 40px; border-radius: 6px; }
-
-        /* TOGGLE LOGIC */
-        body.show-list .album-art { opacity: 0; transform: scale(0.9); pointer-events: none; }
-        body.show-list .embedded-list { display: flex; }
-
-        /* LANDSCAPE FIX */
-        @media (orientation: landscape) {
-            .container { max-width: 1000px; flex-direction: row; flex-wrap: wrap; }
-            .top-nav { width: 100%; }
-            .main-content { grid-template-columns: 1fr 1fr; display: grid; height: 70vh; gap: 20px; }
-            .music-player { border: none; background: transparent; }
-            .album-art { opacity: 1 !important; transform: none !important; }
-            .embedded-list { display: flex !important; position: static; width: 100%; height: 100%; }
-            .list-toggle-btn { display: none; }
+        /* Right Side: Playlist */
+        .playlist-section { 
+            background: var(--glass); 
+            border: 1px solid var(--border); 
+            border-radius: 24px; 
+            padding: 20px;
+            overflow-y: auto; /* Scrollable if long */
+            display: flex;
+            flex-direction: column;
         }
+        .playlist-section h4 { margin-bottom: 15px; opacity: 0.8; font-size: 1rem; }
+        .playlist-list { flex: 1; overflow-y: auto; scrollbar-width: thin; }
+
+        .track-item { display: flex; align-items: center; gap: 15px; padding: 12px; border-radius: 12px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; }
+        .track-item.active { background: var(--accent); color: #000; }
+        .track-item img { width: 45px; height: 45px; border-radius: 6px; }
+
+        .loader { display: none; text-align: center; color: var(--accent); padding: 10px; font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="top-nav">
+    <div class="top-bar">
         <div class="language-tabs">
-            <div class="language-tab active" id="tab-hindi" onclick="loadTrendingPlaylist('hindi')">Hindi</div>
-            <div class="language-tab" id="tab-telugu" onclick="loadTrendingPlaylist('telugu')">Telugu</div>
-            <div class="language-tab" id="tab-english" onclick="loadTrendingPlaylist('english')">English</div>
-            <div class="language-tab" id="tab-tamil" onclick="loadTrendingPlaylist('tamil')">Tamil</div>
+            <div class="language-tab" id="tab-hindi" onclick="loadTrendingPlaylist('hindi')">🇮🇳 Hindi</div>
+            <div class="language-tab" id="tab-telugu" onclick="loadTrendingPlaylist('telugu')">🌟 Telugu</div>
+            <div class="language-tab" id="tab-english" onclick="loadTrendingPlaylist('english')">🌎 English</div>
+            <div class="language-tab" id="tab-tamil" onclick="loadTrendingPlaylist('tamil')">🎭 Tamil</div>
+            <div class="language-tab" id="tab-punjabi" onclick="loadTrendingPlaylist('punjabi')">🎪 Punjabi</div>
         </div>
+
         <div class="search-container">
-            <input type="text" class="search-input" id="searchInp" placeholder="Search songs..." oninput="getSuggestions(this.value)">
+            <input type="text" class="search-input" id="searchInp" placeholder="Search Music..." oninput="getSuggestions(this.value)">
             <div class="suggestions-box" id="sugBox"></div>
         </div>
     </div>
 
     <div class="main-content">
         <div class="music-player">
-            <div class="display-container">
-                <div class="album-art"><img id="mainImg" src=""></div>
-                <div class="embedded-list">
-                    <h4>Queue <i class="fas fa-times" onclick="toggleList()"></i></h4>
-                    <div class="playlist-scroll" id="playlistList"></div>
-                </div>
-            </div>
+            <div class="album-art"><img id="mainImg" src=""></div>
+            <h2 id="mainTitle" style="font-size: 1.3rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">AutoVerse</h2>
+            <p id="mainArtist" style="color:var(--text-dim); font-size:0.9rem; margin-bottom:5px">Select a song</p>
 
-            <div class="info-section">
-                <h2 id="mainTitle" style="font-size: 1.4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">AutoVerse</h2>
-                <p id="mainArtist" style="color: var(--text-dim); font-size: 0.9rem;">Select music</p>
-            </div>
-
-            <div class="progress-section">
-                <button class="list-toggle-btn" id="qBtn" onclick="toggleList()">
-                    <i class="fas fa-list-ul"></i> Queue
-                </button>
-                <div class="progress-bar" onclick="seek(event)"><div class="progress-fill" id="progFill"></div></div>
-                <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-top:8px">
-                    <span id="curTime">0:00</span><span id="durTime">0:00</span>
-                </div>
+            <div class="progress-bar" onclick="seek(event)"><div class="progress-fill" id="progFill"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:15px">
+                <span id="curTime">0:00</span><span id="durTime">0:00</span>
             </div>
 
             <div class="controls">
-                <i class="fas fa-step-backward" onclick="prev()" style="cursor:pointer; font-size: 1.5rem"></i>
+                <i class="fas fa-backward-step" onclick="prev()" style="cursor:pointer; font-size: 1.4rem;"></i>
                 <div class="play-btn" onclick="toggle()"><i id="playIcon" class="fas fa-play"></i></div>
-                <i class="fas fa-step-forward" onclick="next()" style="cursor:pointer; font-size: 1.5rem"></i>
+                <i class="fas fa-forward-step" onclick="next()" style="cursor:pointer; font-size: 1.4rem;"></i>
             </div>
+
+            <div class="volume-control">
+                <i class="fas fa-volume-low"></i>
+                <input type="range" class="volume-slider" min="0" max="1" step="0.05" value="0.7" oninput="changeVol(this.value)">
+                <i class="fas fa-volume-high"></i>
+            </div>
+        </div>
+
+        <div class="playlist-section">
+            <h4>Up Next</h4>
+            <div id="radioLoader" class="loader"><i class="fas fa-spinner fa-spin"></i> Discovery Engine...</div>
+            <div class="playlist-list" id="playlistList"></div>
         </div>
     </div>
 </div>
@@ -172,27 +145,35 @@
 <script>
     const audio = document.getElementById('audio');
     const API = "https://jiosavan-api-with-playlist.vercel.app/api";
-    let playlist = [], currentIndex = 0, currentLang = 'telugu', loadedIds = new Set(), isFetching = false, sTimer;
+    
+    let playlist = [];
+    let currentIndex = 0;
+    let currentLang = 'hindi';
+    let loadedIds = new Set();
+    let isFetching = false;
+    let sTimer;
 
-    const trendingPlaylists = { hindi: "hindi trending 2026", telugu: "telugu latest hits", english: "global top chart", tamil: "tamil trending" };
-
-    function toggleList() {
-        const body = document.body;
-        const btn = document.getElementById('qBtn');
-        const isShowing = body.classList.toggle('show-list');
-        btn.classList.toggle('active-btn', isShowing);
-    }
+    const trendingPlaylists = {
+        hindi: "hindi trending 2026",
+        telugu: "telugu latest hits",
+        english: "global top chart",
+        tamil: "tamil trending",
+        punjabi: "punjabi top hits"
+    };
 
     async function loadTrendingPlaylist(lang) {
         currentLang = lang;
         document.querySelectorAll('.language-tab').forEach(t => t.classList.remove('active'));
         document.getElementById(`tab-${lang}`).classList.add('active');
+
         const res = await fetch(`${API}/search/songs?query=${encodeURIComponent(trendingPlaylists[lang])}&limit=15`);
         const data = await res.json();
         if(data.success) {
             playlist = data.data.results;
-            loadedIds.clear(); playlist.forEach(s => loadedIds.add(s.id));
-            render(); play(0);
+            loadedIds.clear();
+            playlist.forEach(s => loadedIds.add(s.id));
+            render();
+            play(0);
         }
     }
 
@@ -206,8 +187,8 @@
             if (data.success && data.data.results) {
                 box.innerHTML = data.data.results.map(s => `
                     <div class="suggestion-item" style="display:flex; gap:10px; padding:10px; cursor:pointer;" onclick="startSearchSong('${s.id}')">
-                        <img src="${s.image[0].url}" width="30" height="30" style="border-radius:4px">
-                        <div style="font-size:0.8rem">${decode(s.name)}</div>
+                        <img src="${s.image[0].url}" width="35" height="35" style="border-radius:4px">
+                        <div><div style="font-size:0.85rem">${decode(s.name)}</div></div>
                     </div>
                 `).join('');
                 box.style.display = 'block';
@@ -221,14 +202,17 @@
         const data = await res.json();
         if(data.success) {
             const song = data.data[0];
-            playlist = [song]; loadedIds.clear(); loadedIds.add(song.id);
-            currentLang = song.language; play(0);
+            playlist = [song];
+            loadedIds.clear(); loadedIds.add(song.id);
+            currentLang = song.language;
+            play(0);
         }
     }
 
     async function fetchRadio(songId) {
         if (isFetching) return;
         isFetching = true;
+        document.getElementById('radioLoader').style.display = 'block';
         try {
             const res = await fetch(`https://jiosaavan-api-2-harsh-patel.vercel.app/api/songs/${songId}/suggestions`);
             const json = await res.json();
@@ -237,7 +221,10 @@
                 fresh.forEach(s => { loadedIds.add(s.id); playlist.push(s); });
                 render();
             }
-        } catch (e) {} finally { isFetching = false; }
+        } catch (e) {} finally {
+            isFetching = false;
+            document.getElementById('radioLoader').style.display = 'none';
+        }
     }
 
     function play(index) {
@@ -259,7 +246,8 @@
             <div class="track-item ${i === currentIndex ? 'active' : ''}" onclick="play(${i})">
                 <img src="${s.image[0].url}">
                 <div style="flex:1; overflow:hidden">
-                    <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:0.85rem;">${decode(s.name)}</div>
+                    <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:0.9rem;">${decode(s.name)}</div>
+                    <div style="font-size:0.75rem; opacity:0.7">${s.primaryArtists}</div>
                 </div>
             </div>
         `).join('');
@@ -268,6 +256,7 @@
     function toggle() { audio.paused ? (audio.play(), document.getElementById('playIcon').className="fas fa-pause") : (audio.pause(), document.getElementById('playIcon').className="fas fa-play"); }
     function next() { play(currentIndex + 1); }
     function prev() { play(currentIndex - 1); }
+    function changeVol(v) { audio.volume = v; }
     function seek(e) { audio.currentTime = (e.offsetX / e.currentTarget.offsetWidth) * audio.duration; }
 
     audio.ontimeupdate = () => {
@@ -279,12 +268,16 @@
 
     function fmt(s) {
         if(!s) return "0:00";
-        const m = Math.floor(s/60), sec = Math.floor(s%60);
+        const m = Math.floor(s/60);
+        const sec = Math.floor(s%60);
         return `${m}:${sec < 10 ? '0' : ''}${sec}`;
     }
-    function decode(h) { const t = document.createElement("textarea"); t.innerHTML = h; return t.value; }
+    function decode(h) {
+        const t = document.createElement("textarea");
+        t.innerHTML = h; return t.value;
+    }
 
-    window.onload = () => loadTrendingPlaylist('telugu');
+    window.onload = () => loadTrendingPlaylist('hindi');
 </script>
 
 </body>
