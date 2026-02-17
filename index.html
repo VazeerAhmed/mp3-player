@@ -230,7 +230,7 @@
             font-size: 1.1rem;
             color: var(--text-dim);
             text-align: center;
-            padding-bottom: 50%; /* Allow last lines to scroll to center */
+            padding-bottom: 50%;
             
         }
 
@@ -654,12 +654,8 @@
     }
 
     function getAlbumName(song) {
-        if (song.album?.name) {
-            return song.album.name;
-        }
-        if (typeof song.album === 'string') {
-            return song.album;
-        }
+        if (song.album?.name) return song.album.name;
+        if (typeof song.album === 'string') return song.album;
         return '';
     }
 
@@ -695,20 +691,17 @@
         if (view === 'queue') {
             body.classList.add('show-queue');
             queueBtn.classList.add('active');
-            scrollActiveToTop(); // Added: Scroll current song into view
+            scrollActiveToTop();
         } else if (view === 'lyrics') {
             body.classList.add('show-lyrics');
             lyricsBtn.classList.add('active');
         } else if (view === 'info') {
             body.classList.add('show-info');
             infoBtn.classList.add('active');
-            if (currentSongData) {
-                displaySongInfo(currentSongData);
-            }
+            if (currentSongData) displaySongInfo(currentSongData);
         }
     }
 
-    // NEW: Function to scroll active song in queue into view
     function scrollActiveToTop() {
         setTimeout(() => {
             const activeItems = document.querySelectorAll('.track-item.active');
@@ -813,7 +806,7 @@
 
                 if (text) {
                     const lyricEl = document.createElement('div');
-                     lyricEl.classList.add('lyric-line');
+                    lyricEl.classList.add('lyric-line');
                     lyricEl.innerText = text;
                     lyricEl.onclick = () => { audio.currentTime = time; };
                     container.appendChild(lyricEl);
@@ -929,14 +922,6 @@
         box.style.display = 'block';
     }
 
-    function switchSearchType(type) {
-        currentSearchType = type;
-        const q = document.getElementById('searchInp').value;
-        if (q.length >= 2) {
-            getSuggestions(q);
-        }
-    }
-
     async function loadAlbum(albumId) {
         document.getElementById('sugBox').style.display = 'none';
         document.getElementById('searchInp').value = '';
@@ -945,7 +930,7 @@
             const json = await res.json();
             if (json.success && json.data) {
                 isAlbumPlaylist = true;
-                albumComplete = false; // Reset album status
+                albumComplete = false;
                 playlist = json.data.songs || []; 
                 loadedIds.clear();
                 playlist.forEach(s => loadedIds.add(s.id));
@@ -964,7 +949,7 @@
             const json = await res.json();
             if (json.success && json.data) {
                 isAlbumPlaylist = true;
-                albumComplete = false; // Reset album status
+                albumComplete = false;
                 playlist = json.data.songs || []; 
                 loadedIds.clear();
                 playlist.forEach(s => loadedIds.add(s.id));
@@ -996,7 +981,7 @@
     }
 
     async function fetchRadio(songId) {
-        if (!autoRecommendations) return; // Removed albumComplete dependency here for more robust fetching
+        if (!autoRecommendations) return;
         if (isFetching) return;
         isFetching = true;
         document.getElementById('radioLoader').style.display = 'block';
@@ -1007,11 +992,9 @@
                 const fresh = json.data.filter(s => !loadedIds.has(s.id));
                 fresh.forEach(s => { loadedIds.add(s.id); playlist.push(s); });
                 render();
-                
-                // NEW: Automatic skip logic for albums/playlists that reached the end
                 if (albumComplete) {
-                    albumComplete = false; // Toggle off to prevent infinite loop
-                    next(); // Automatically start playing the first recommendation
+                    albumComplete = false;
+                    next();
                 }
             }
         } catch (e) { console.error(e); } finally {
@@ -1032,7 +1015,7 @@
         updateMediaSession(s);
         fetchLyrics(s.name || s.title, getArtistName(s));
         render();
-        scrollActiveToTop(); // Added: Keep queue synced with current song
+        scrollActiveToTop();
     }
 
     function play(index) {
@@ -1072,11 +1055,8 @@
         if (currentIndex < playlist.length - 1) {
             play(currentIndex + 1);
         } else if (autoRecommendations) {
-            // UPDATED: Albums now mark themselves as complete and request radio suggestions
             albumComplete = true; 
-            if (playlist[currentIndex]) {
-                fetchRadio(playlist[currentIndex].id);
-            }
+            if (playlist[currentIndex]) fetchRadio(playlist[currentIndex].id);
         }
     }
     
@@ -1118,18 +1098,49 @@
 
     window.onload = () => loadTrendingPlaylist('telugu');
 
+    // =============================================
+    // ADMIN REMOTE CONTROL via postMessage
+    // =============================================
     window.addEventListener('message', (e) => {
-    const action = e.data?.action;
-    const audio = document.querySelector('audio'); // or however your player exposes audio
-    if (!audio) return;
-    if (action === 'play')       audio.play();
-    if (action === 'pause')      audio.pause();
-    if (action === 'playpause')  audio.paused ? audio.play() : audio.pause();
-    if (action === 'mute')       audio.muted = !audio.muted;
-    if (action === 'setVolume')  audio.volume = e.data.volume;
-    if (action === 'next')       /* call your next-track function */;
-    if (action === 'previous')   /* call your prev-track function */;
-});
+        // Accept both formats passenger.html sends:
+        // { type: 'media-control', action: 'play' }  — from mediaControl()
+        // { action: 'play' }                          — from Bluetooth handlers
+        const action = e.data?.action || (e.data?.type === 'media-control' ? e.data?.action : null);
+        if (!action) return;
+
+        console.log('🎮 Admin remote command:', action);
+
+        if (action === 'play') {
+            audio.play();
+            document.getElementById('playIcon').className = "fas fa-pause";
+        }
+        else if (action === 'pause') {
+            audio.pause();
+            document.getElementById('playIcon').className = "fas fa-play";
+        }
+        else if (action === 'playpause') {
+            if (audio.paused) {
+                audio.play();
+                document.getElementById('playIcon').className = "fas fa-pause";
+            } else {
+                audio.pause();
+                document.getElementById('playIcon').className = "fas fa-play";
+            }
+        }
+        else if (action === 'mute') {
+            audio.muted = !audio.muted;
+        }
+        else if (action === 'setVolume') {
+            audio.volume = e.data.volume;
+        }
+        else if (action === 'next') {
+            next();
+        }
+        else if (action === 'previous') {
+            prev();
+        }
+    });
+
 </script>
 </body>
 </html>
