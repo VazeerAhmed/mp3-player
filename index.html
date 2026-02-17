@@ -1117,6 +1117,19 @@
     });
 
     window.onload = () => loadTrendingPlaylist('telugu');
+
+    window.addEventListener('message', (e) => {
+    const action = e.data?.action;
+    const audio = document.querySelector('audio'); // or however your player exposes audio
+    if (!audio) return;
+    if (action === 'play')       audio.play();
+    if (action === 'pause')      audio.pause();
+    if (action === 'playpause')  audio.paused ? audio.play() : audio.pause();
+    if (action === 'mute')       audio.muted = !audio.muted;
+    if (action === 'setVolume')  audio.volume = e.data.volume;
+    if (action === 'next')       /* call your next-track function */;
+    if (action === 'previous')   /* call your prev-track function */;
+});
 </script>
 </body>
 </html>
