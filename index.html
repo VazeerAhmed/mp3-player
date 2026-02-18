@@ -158,6 +158,9 @@
             flex-direction: column;
             justify-content: center;
             position: relative;
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         /* Album Art / Display Area */
@@ -335,20 +338,42 @@
             pointer-events: none;
         }
 
-        .progress-bar { 
-            width: 100%; 
-            height: 6px; 
-            background: #222; 
-            border-radius: 10px; 
-            margin: 20px 0 10px; 
-            cursor: pointer; 
+        /* Draggable progress bar */
+        .progress-wrap {
+            width: 100%;
+            margin: 18px 0 8px;
+            position: relative;
         }
-        .progress-fill { 
-            height: 100%; 
-            background: var(--accent); 
-            width: 0%; 
+        .progress-range {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 5px;
             border-radius: 10px;
-            transition: width 0.1s linear;
+            outline: none;
+            cursor: pointer;
+            display: block;
+            background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--prog, 0%), #333 var(--prog, 0%), #333 100%);
+        }
+        .progress-range:hover { height: 7px; }
+        .progress-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0,217,255,0.7);
+        }
+        .progress-range::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 8px rgba(0,217,255,0.7);
         }
 
         .controls { 
@@ -564,9 +589,9 @@
                 </div>
             </div>
 
-            <div style="text-align:center; width:100%; margin-bottom: 10px;">
-                <h2 id="mainTitle" style="font-size: 1.3rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">AutoVerse</h2>
-                <p id="mainArtist" style="color:var(--text-dim); font-size:0.9rem; margin-bottom:5px">Select a song</p>
+            <div style="text-align:center; width:100%; max-width:100%; margin-bottom:10px; min-width:0; padding:0 4px; overflow:hidden;">
+                <h2 id="mainTitle" style="font-size:1.15rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; margin-bottom:4px;">AutoVerse</h2>
+                <p id="mainArtist" style="color:var(--text-dim); font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; margin-bottom:5px;">Select a song</p>
             </div>
 
             <div class="toggle-buttons">
@@ -575,10 +600,10 @@
                 <div class="toggle-btn" id="infoBtn" onclick="toggleView('info')">Info</div>
             </div>
 
-            <div class="progress-bar" onclick="seek(event)">
-                <div class="progress-fill" id="progFill"></div>
+            <div class="progress-wrap">
+                <input type="range" id="progressRange" class="progress-range" min="0" max="1000" value="0" step="1" oninput="seekRange(this.value)">
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:15px">
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:15px; padding:0 2px;">
                 <span id="curTime">0:00</span>
                 <span id="durTime">0:00</span>
             </div>
@@ -619,38 +644,97 @@
 
 <script>
     const audio = document.getElementById('audio');
-    const API = "https://saavn.sumit.co/api";
-    
+    const API = "https://jiosaavn-api-privatecvc2.vercel.app";
+    const langMap = { hindi:'hindi', telugu:'telugu', english:'english', tamil:'tamil', punjabi:'punjabi' };
+
+    // Normalize songs from the jiosaavn API (uses .link) to the format this app expects (.url)
+    function normalizeSong(s) {
+        if (!s) return s;
+        // Normalize image array
+        if (s.image && s.image[0] && s.image[0].link && !s.image[0].url) {
+            s.image = s.image.map(img => ({ ...img, url: img.link }));
+        }
+        // Normalize downloadUrl array
+        if (s.downloadUrl && s.downloadUrl[0] && s.downloadUrl[0].link && !s.downloadUrl[0].url) {
+            s.downloadUrl = s.downloadUrl.map(d => ({ ...d, url: d.link }));
+        }
+        // The working API puts songs under track instead of directly — flatten if needed
+        return s;
+    }
+    function normalizeSongs(arr) { return (arr || []).map(normalizeSong); }
+
+    // Wrap fetch calls to the working API — it returns {data:{results:[]}} without .success
+    async function apiFetch(path) {
+        const res = await fetch(API + path);
+        const json = await res.json();
+        // Normalize to {success, data} shape
+        if (!('success' in json)) json.success = true;
+        if (json.data !== undefined) {
+            if (Array.isArray(json.data)) {
+                // e.g. suggestions endpoint returns data as array
+                json.data = normalizeSongs(json.data);
+            } else if (json.data && json.data.results) {
+                json.data.results = normalizeSongs(json.data.results);
+            } else if (json.data && json.data.songs) {
+                json.data.songs = normalizeSongs(json.data.songs);
+            }
+        } else if (Array.isArray(json)) {
+            return { success: true, data: normalizeSongs(json) };
+        }
+        return json;
+    }
+
     let playlist = [];
     let currentIndex = 0;
     let currentLang = 'telugu';
     let loadedIds = new Set();
+    let loadedTitleKeys = new Set(); // dedup by title+artist to avoid version duplicates
     let isFetching = false;
     let sTimer;
     let currentSongData = null;
     let currentActiveView = null;
     let parsedLyrics = [];
-    let autoRecommendations = true; 
-    let currentSearchType = 'songs'; 
-    let isAlbumPlaylist = false; 
-    let albumComplete = false; 
+    let autoRecommendations = true;
+    let isAlbumPlaylist = false;
+    let albumComplete = false;
+    let radioFetchCount = 0; // track how many batches fetched
 
     const trendingPlaylists = {
-        hindi: "hindi trending 2026",
-        telugu: "telugu latest hits",
-        english: "global top chart",
-        tamil: "tamil trending",
-        punjabi: "punjabi top hits"
+        hindi:   { query: "hindi hits 2025",          lang: "hindi"   },
+        telugu:  { query: "telugu latest hits 2025",   lang: "telugu"  },
+        english: { query: "top english hits 2025",     lang: "english" },
+        tamil:   { query: "tamil hits 2025",           lang: "tamil"   },
+        punjabi: { query: "punjabi hits 2025",         lang: "punjabi" }
     };
 
+    // ── Utility helpers ──────────────────────────────────────────────────────
+
+    function decodeHTML(str) {
+        if (!str) return '';
+        const t = document.createElement('textarea');
+        t.innerHTML = str;
+        return t.value;
+    }
+
+    function cleanTitle(str) {
+        return decodeHTML(str)
+            .replace(/\s*[-–]\s*(Telugu|Hindi|Tamil|English|Punjabi|Kannada|Malayalam|Marathi|Bengali)\s*$/i, '')
+            .trim();
+    }
+
+    function cleanArtist(str) { return decodeHTML(str); }
+
     function getArtistName(song) {
-        if (song.artists?.primary && Array.isArray(song.artists.primary) && song.artists.primary.length > 0) {
-            return song.artists.primary.map(a => a.name).join(', ');
-        }
-        if (song.primaryArtists && song.primaryArtists !== '') {
-            return song.primaryArtists;
-        }
+        if (song.artists?.primary?.length > 0) return song.artists.primary.map(a => a.name).join(', ');
+        if (song.primaryArtists) return song.primaryArtists;
         return song.artist || song.singers || 'Unknown Artist';
+    }
+
+    function getAlbumArtist(a) {
+        if (a.artists?.primary?.length > 0) return a.artists.primary.map(x => x.name).join(', ');
+        if (a.artists?.all?.length > 0)     return a.artists.all[0].name;
+        if (typeof a.artists === 'string')  return a.artists;
+        return a.artist || a.primaryArtists || 'Various Artists';
     }
 
     function getAlbumName(song) {
@@ -659,12 +743,20 @@
         return '';
     }
 
+    function getTitleKey(s) {
+        const title  = cleanTitle(s.name || s.title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const artist = getArtistName(s).split(',')[0].toLowerCase().trim();
+        return `${title}||${artist}`;
+    }
+
     function formatNumber(num) {
         if (!num) return 'N/A';
         if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        if (num >= 1000)    return (num / 1000).toFixed(1) + 'K';
         return num.toString();
     }
+
+    // ── UI State ─────────────────────────────────────────────────────────────
 
     function toggleView(view) {
         const body = document.body;
@@ -747,11 +839,11 @@
 
     function displaySongInfo(song) {
         const infoContent = document.getElementById('infoContent');
-        const artistName = getArtistName(song);
-        const albumName = getAlbumName(song);
-        
+        const artistName = cleanArtist(getArtistName(song));
+        const albumName  = cleanTitle(getAlbumName(song));
+        const title      = cleanTitle(song.name || song.title);
         infoContent.innerHTML = `
-            <div class="info-row"><span class="info-label">Title</span><span class="info-value">${song.name || song.title}</span></div>
+            <div class="info-row"><span class="info-label">Title</span><span class="info-value">${title}</span></div>
             <div class="info-row"><span class="info-label">Artist</span><span class="info-value">${artistName}</span></div>
             <div class="info-row"><span class="info-label">Album</span><span class="info-value">${albumName || 'N/A'}</span></div>
             <div class="info-row"><span class="info-label">Year</span><span class="info-value">${song.year || 'N/A'}</span></div>
@@ -829,135 +921,273 @@
         document.querySelectorAll('.language-tab').forEach(t => t.classList.remove('active'));
         document.getElementById(`tab-${lang}`).classList.add('active');
 
-        const res = await fetch(`${API}/search/songs?query=${encodeURIComponent(trendingPlaylists[lang])}&limit=15`);
-        const data = await res.json();
-        
-        if(data.success) {
-            playlist = data.data.results;
-            loadedIds.clear();
-            playlist.forEach(s => loadedIds.add(s.id));
-            render();
-            loadSongUI(0);
-        }
+        const { query } = trendingPlaylists[lang];
+        try {
+            const data = await apiFetch(`/search/songs?query=${encodeURIComponent(query)}&limit=20`);
+            if (data.success) {
+                const allResults = data.data.results || [];
+                // English songs often lack language field or have inconsistent values — don't hard-filter
+                if (lang === 'english') {
+                    playlist = allResults;
+                } else {
+                    const filtered = allResults.filter(s => !s.language || s.language.toLowerCase() === lang);
+                    playlist = filtered.length > 0 ? filtered : allResults;
+                }
+                loadedIds.clear(); loadedTitleKeys.clear();
+                playlist.forEach(s => { loadedIds.add(s.id); loadedTitleKeys.add(getTitleKey(s)); });
+                render();
+                loadSongUI(0);
+                if (autoRecommendations && playlist.length > 0) {
+                    setTimeout(() => fetchRadio(playlist[0].id), 800);
+                }
+            }
+        } catch(e) { console.error('loadTrendingPlaylist error:', e); }
+    }
+
+    // ── Search & Suggestions ─────────────────────────────────────────────────
+
+    let lastSearchQuery = '';
+
+    // Score a title against the query — higher = better match
+    function matchScore(rawTitle, query) {
+        // Strip HTML entities, language suffix, and parenthetical "(From ...)" before comparing
+        const t = cleanTitle(rawTitle).replace(/\s*\(.*?\)/g, '').toLowerCase().trim();
+        const q = query.toLowerCase().trim();
+        if (!t || !q) return 0;
+        if (t === q)               return 100;
+        if (t.startsWith(q + ' ') || t.startsWith(q)) return 85;
+        if (t.includes(' ' + q + ' ') || t.endsWith(' ' + q)) return 70;
+        if (t.includes(q))         return 50;
+        // word-level overlap
+        const qWords = q.split(/\s+/).filter(Boolean);
+        const tWords = t.split(/\s+/).filter(Boolean);
+        const matched = qWords.filter(w => tWords.some(tw => tw === w || tw.startsWith(w))).length;
+        return matched > 0 ? Math.round(10 + (matched / qWords.length) * 30) : 0;
+    }
+
+    function sortByRelevance(results, query) {
+        return [...results].sort((a, b) => {
+            const ta = a.name || a.title || '';
+            const tb = b.name || b.title || '';
+            return matchScore(tb, query) - matchScore(ta, query);
+        });
     }
 
     async function getSuggestions(q) {
         const box = document.getElementById('sugBox');
-        if (q.length < 2) { 
-            box.style.display = 'none'; 
-            return; 
-        }
+        if (q.length < 2) { box.style.display = 'none'; return; }
+        lastSearchQuery = q;
         clearTimeout(sTimer);
-        
         sTimer = setTimeout(async () => {
-            const [songsRes, albumsRes, playlistsRes] = await Promise.all([
-                fetch(`${API}/search/songs?query=${encodeURIComponent(q)}&limit=5`),
-                fetch(`${API}/search/albums?query=${encodeURIComponent(q)}&limit=5`),
-                fetch(`${API}/search/playlists?query=${encodeURIComponent(q)}&limit=5`)
-            ]);
+            try {
+                // Fetch page 1 AND page 2 for songs to get more candidates to re-rank
+                const [s1, s2, albumsData, playlistsData] = await Promise.all([
+                    apiFetch(`/search/songs?query=${encodeURIComponent(q)}&limit=20&page=1`),
+                    apiFetch(`/search/songs?query=${encodeURIComponent(q)}&limit=20&page=2`),
+                    apiFetch(`/search/albums?query=${encodeURIComponent(q)}&limit=8&page=1`),
+                    apiFetch(`/search/playlists?query=${encodeURIComponent(q)}&limit=6&page=1`)
+                ]);
 
-            const [songsData, albumsData, playlistsData] = await Promise.all([
-                songsRes.json(),
-                albumsRes.json(),
-                playlistsRes.json()
-            ]);
+                // Merge page1 + page2, deduplicate by id
+                const allSongResults = [...(s1?.data?.results || [])];
+                const seenIds = new Set(allSongResults.map(s => s.id));
+                (s2?.data?.results || []).forEach(s => { if (!seenIds.has(s.id)) { seenIds.add(s.id); allSongResults.push(s); } });
 
-            renderSearchResults(songsData, albumsData, playlistsData);
-        }, 400);
+                const songsData = { success: true, data: { results: sortByRelevance(allSongResults, q).slice(0, 6) } };
+
+                if (albumsData?.success && albumsData.data?.results) {
+                    albumsData.data.results = sortByRelevance(albumsData.data.results, q).slice(0, 3);
+                }
+                if (playlistsData?.success && playlistsData.data?.results) {
+                    playlistsData.data.results = sortByRelevance(playlistsData.data.results, q).slice(0, 3);
+                }
+
+                renderSearchResults(songsData, albumsData, playlistsData, q);
+            } catch(e) { console.error('Search error:', e); }
+        }, 300);
     }
 
-    function renderSearchResults(songsData, albumsData, playlistsData) {
+    // "View All Songs" — fetch pages 1+2 (up to 40), re-rank, show all
+    async function viewAllSongs(q) {
         const box = document.getElementById('sugBox');
-        
-        const tabsHTML = `
-            <div class="search-type-tabs">
-                <div class="search-type-tab active"><i class="fas fa-search"></i> All Results</div>
-            </div>
-        `;
+        box.innerHTML = `<div style="padding:12px;text-align:center;color:var(--accent)"><i class="fas fa-spinner fa-spin"></i> Loading all results...</div>`;
+        try {
+            const [r1, r2] = await Promise.all([
+                apiFetch(`/search/songs?query=${encodeURIComponent(q)}&limit=50&page=1`),
+                apiFetch(`/search/songs?query=${encodeURIComponent(q)}&limit=50&page=2`)
+            ]);
+            const all = [...(r1?.data?.results || [])];
+            const seen = new Set(all.map(s => s.id));
+            (r2?.data?.results || []).forEach(s => { if (!seen.has(s.id)) { seen.add(s.id); all.push(s); } });
+            const sorted = sortByRelevance(all, q);
+            if (sorted.length === 0) { box.innerHTML = '<div style="padding:20px;text-align:center;opacity:0.5;">No results found</div>'; return; }
+            const safeQ = q.replace(/'/g, "\\'");
+            box.innerHTML =
+                `<div style="padding:8px 12px;font-size:0.7rem;color:var(--accent);background:rgba(0,0,0,0.6);letter-spacing:1.5px;font-weight:600;display:flex;justify-content:space-between;align-items:center;">
+                    <span>ALL SONGS (${sorted.length})</span>
+                    <span onclick="getSuggestions('${safeQ}');document.getElementById('searchInp').value='${safeQ}'" style="cursor:pointer;opacity:0.7;font-size:0.65rem;">← Back</span>
+                </div>` +
+                sorted.map(s => {
+                    const title  = cleanTitle(s.name || s.title);
+                    const artist = cleanArtist(getArtistName(s));
+                    return `<div class="suggestion-item" onclick="startSearchSong('${s.id}')">
+                        <img src="${s.image?.[1]?.url || s.image?.[0]?.url || ''}" onerror="this.style.background='#333'">
+                        <div class="suggestion-info">
+                            <div class="suggestion-title">${title}</div>
+                            <div class="suggestion-meta">${artist}${s.year ? ' · ' + s.year : ''}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+            box.style.display = 'block';
+        } catch(e) { console.error(e); }
+    }
+
+    function renderSearchResults(songsData, albumsData, playlistsData, q) {
+        const box = document.getElementById('sugBox');
+        const safeQ = (q || '').replace(/'/g, "\\'");
 
         let songsHTML = '';
-        if (songsData.success && songsData.data.results?.length > 0) {
-            songsHTML = `<div style="padding: 10px; font-size: 0.8rem; color: var(--accent); background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">SONGS</div>` + 
-                songsData.data.results.map(s => `
-                    <div class="suggestion-item" onclick="startSearchSong('${s.id}')">
-                        <img src="${s.image[0].url}">
+        if (songsData?.success && songsData.data?.results?.length > 0) {
+            const totalSongs = songsData.data.total || songsData.data.results.length;
+            songsHTML = `
+                <div style="padding:8px 12px;font-size:0.7rem;color:var(--accent);background:rgba(0,0,0,0.6);letter-spacing:1.5px;font-weight:600;display:flex;justify-content:space-between;align-items:center;">
+                    <span>SONGS</span>
+                    <span onclick="viewAllSongs('${safeQ}')" style="cursor:pointer;background:rgba(0,217,255,0.15);border:1px solid var(--accent);border-radius:10px;padding:2px 8px;font-size:0.65rem;letter-spacing:0.5px;">View All →</span>
+                </div>` +
+                songsData.data.results.map(s => {
+                    const title  = cleanTitle(s.name || s.title);
+                    const artist = cleanArtist(getArtistName(s));
+                    return `<div class="suggestion-item" onclick="startSearchSong('${s.id}')">
+                        <img src="${s.image?.[1]?.url || s.image?.[0]?.url || ''}" onerror="this.style.background='#333'">
                         <div class="suggestion-info">
-                            <div class="suggestion-title">${s.name || s.title}</div>
-                            <div class="suggestion-meta">${getArtistName(s)}</div>
+                            <div class="suggestion-title">${title}</div>
+                            <div class="suggestion-meta">${artist}${s.year ? ' · ' + s.year : ''}</div>
                         </div>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
         }
 
         let albumsHTML = '';
-        if (albumsData.success && albumsData.data.results?.length > 0) {
-            albumsHTML = `<div style="padding: 10px; font-size: 0.8rem; color: var(--accent); background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">ALBUMS</div>` + 
-                albumsData.data.results.map(a => `
-                    <div class="suggestion-item" onclick="loadAlbum('${a.id}')">
-                        <img src="${a.image[0].url}">
+        if (albumsData?.success && albumsData.data?.results?.length > 0) {
+            albumsHTML = `<div style="padding:8px 12px;font-size:0.7rem;color:var(--accent);background:rgba(0,0,0,0.6);letter-spacing:1.5px;font-weight:600;">ALBUMS</div>` +
+                albumsData.data.results.map(a => {
+                    const title  = cleanTitle(a.name || a.title);
+                    const artist = decodeHTML(getAlbumArtist(a));
+                    const count  = a.songCount || a.songs_count || a.song_count || '';
+                    const meta   = [artist, count ? count + ' songs' : null, a.year || null].filter(Boolean).join(' · ');
+                    return `<div class="suggestion-item" onclick="loadAlbum('${a.id}')">
+                        <img src="${a.image?.[1]?.url || a.image?.[1]?.link || a.image?.[0]?.url || a.image?.[0]?.link || ''}" onerror="this.style.background='#333'">
                         <div class="suggestion-info">
-                            <div class="suggestion-title">${a.name || a.title}</div>
-                            <div class="suggestion-meta">${a.artist || 'Album'} • ${a.songCount || 0} songs</div>
+                            <div class="suggestion-title">${title}</div>
+                            <div class="suggestion-meta">${meta}</div>
                         </div>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
         }
 
         let playlistsHTML = '';
-        if (playlistsData.success && playlistsData.data.results?.length > 0) {
-            playlistsHTML = `<div style="padding: 10px; font-size: 0.8rem; color: var(--accent); background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">PLAYLISTS</div>` + 
-                playlistsData.data.results.map(p => `
-                    <div class="suggestion-item" onclick="loadPlaylist('${p.id}')">
-                        <img src="${p.image[0].url}">
+        if (playlistsData?.success && playlistsData.data?.results?.length > 0) {
+            playlistsHTML = `<div style="padding:8px 12px;font-size:0.7rem;color:var(--accent);background:rgba(0,0,0,0.6);letter-spacing:1.5px;font-weight:600;">PLAYLISTS</div>` +
+                playlistsData.data.results.map(p => {
+                    const title = cleanTitle(p.name || p.title);
+                    const count = p.songCount || p.songs_count || '';
+                    // Pass both id and permaUrl so loadPlaylist can try multiple strategies
+                    const safeUrl = encodeURIComponent(p.url || p.permaUrl || p.permalink_url || '');
+                    return `<div class="suggestion-item" onclick="loadPlaylist('${p.id}','${safeUrl}')">
+                        <img src="${p.image?.[1]?.url || p.image?.[1]?.link || p.image?.[0]?.url || p.image?.[0]?.link || ''}" onerror="this.style.background='#333'">
                         <div class="suggestion-info">
-                            <div class="suggestion-title">${p.name || p.title}</div>
-                            <div class="suggestion-meta">${p.songCount || 0} songs</div>
+                            <div class="suggestion-title">${title}</div>
+                            <div class="suggestion-meta">${count ? count + ' songs' : 'Playlist'}</div>
                         </div>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
         }
 
-        const finalHTML = tabsHTML + songsHTML + albumsHTML + playlistsHTML;
-        box.innerHTML = finalHTML || '<div style="padding:20px; text-align:center; opacity:0.5;">No results found</div>';
+        const finalHTML = songsHTML + albumsHTML + playlistsHTML;
+        box.innerHTML = finalHTML || '<div style="padding:20px;text-align:center;opacity:0.5;">No results found</div>';
         box.style.display = 'block';
     }
+
+    // ── Album / Playlist / Song loaders ─────────────────────────────────────
 
     async function loadAlbum(albumId) {
         document.getElementById('sugBox').style.display = 'none';
         document.getElementById('searchInp').value = '';
         try {
-            const res = await fetch(`${API}/albums?id=${albumId}`);
-            const json = await res.json();
+            const json = await apiFetch(`/albums?id=${albumId}`);
             if (json.success && json.data) {
                 isAlbumPlaylist = true;
                 albumComplete = false;
-                playlist = json.data.songs || []; 
-                loadedIds.clear();
-                playlist.forEach(s => loadedIds.add(s.id));
+                // API may return songs directly or nested
+                const songs = normalizeSongs(json.data.songs || json.data.tracks || []);
+                if (songs.length === 0) {
+                    console.warn('Album has no songs in API response:', json.data);
+                    return;
+                }
+                playlist = songs;
+                loadedIds.clear(); loadedTitleKeys.clear();
+                playlist.forEach(s => { loadedIds.add(s.id); loadedTitleKeys.add(getTitleKey(s)); });
                 currentIndex = 0;
                 render();
-                if (playlist.length > 0) play(0);
+                play(0);
             }
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error('loadAlbum error:', error); }
     }
 
-    async function loadPlaylist(playlistId) {
+    async function loadPlaylist(playlistId, encodedUrl) {
         document.getElementById('sugBox').style.display = 'none';
         document.getElementById('searchInp').value = '';
-        try {
-            const res = await fetch(`${API}/playlists?id=${playlistId}`);
-            const json = await res.json();
-            if (json.success && json.data) {
-                isAlbumPlaylist = true;
-                albumComplete = false;
-                playlist = json.data.songs || []; 
-                loadedIds.clear();
-                playlist.forEach(s => loadedIds.add(s.id));
-                currentIndex = 0;
-                render();
-                if (playlist.length > 0) play(0);
-            }
-        } catch (error) { console.error(error); }
+        document.getElementById('radioLoader').style.display = 'block';
+
+        // Try to extract the token from the permaUrl if we have it
+        // JioSaavn URLs look like: /featured/name/TOKEN or /s/playlist/hash/name/TOKEN
+        let token = null;
+        if (encodedUrl) {
+            const url = decodeURIComponent(encodedUrl);
+            const m = url.match(/\/([^/]+)\s*$/) || url.match(/\/([A-Za-z0-9_,\-]+)$/);
+            if (m) token = m[1];
+        }
+
+        const attempts = [
+            // Attempt 1: direct numeric id
+            () => apiFetch(`/playlists?id=${playlistId}`),
+            // Attempt 2: listid param (some API versions use this)
+            () => apiFetch(`/playlists?listid=${playlistId}`),
+            // Attempt 3: token from URL
+            token ? () => apiFetch(`/playlists?id=${token}`) : null,
+            // Attempt 4: search for songs from this playlist by name — fallback using the name from search
+            null
+        ].filter(Boolean);
+
+        for (const attempt of attempts) {
+            try {
+                const json = await attempt();
+                if (json.success && json.data) {
+                    const songs = normalizeSongs(json.data.songs || json.data.tracks || []);
+                    if (songs.length > 0) {
+                        isAlbumPlaylist = true;
+                        albumComplete   = false;
+                        playlist = songs;
+                        loadedIds.clear(); loadedTitleKeys.clear();
+                        playlist.forEach(s => { loadedIds.add(s.id); loadedTitleKeys.add(getTitleKey(s)); });
+                        currentIndex = 0;
+                        render();
+                        play(0);
+                        document.getElementById('radioLoader').style.display = 'none';
+                        return;
+                    }
+                }
+            } catch(e) { /* try next */ }
+        }
+
+        // All API attempts failed — show user-friendly error
+        document.getElementById('radioLoader').style.display = 'none';
+        const box = document.getElementById('sugBox');
+        box.style.display = 'block';
+        box.innerHTML = `<div style="padding:16px 12px;text-align:center;color:#ff6b6b;">
+            <i class="fas fa-exclamation-circle"></i> Couldn't load playlist songs.<br>
+            <span style="font-size:0.75rem;opacity:0.7;">Try searching for individual songs instead.</span>
+        </div>`;
     }
 
     async function startSearchSong(id) {
@@ -965,75 +1195,148 @@
         document.getElementById('searchInp').value = '';
         isAlbumPlaylist = false;
         albumComplete = false;
-        const res = await fetch(`${API}/songs/${id}`);
-        const data = await res.json();
-        if(data.success && data.data) {
-            const song = data.data[0];
-            playlist = [song];
-            loadedIds.clear();
-            loadedIds.add(song.id);
-            currentIndex = 0;
-            play(0);
-            if (autoRecommendations) {
-                setTimeout(() => { if (playlist.length < 5) fetchRadio(song.id); }, 1000);
+        try {
+            const data = await apiFetch(`/songs?id=${id}`);
+            if(data.success && data.data) {
+                const rawSong = Array.isArray(data.data) ? data.data[0] : (data.data[0] || data.data);
+                const song = normalizeSong(rawSong);
+                // Lock recommendations to this song's language
+                if (song.language && langMap[song.language.toLowerCase()]) {
+                    currentLang = song.language.toLowerCase();
+                }
+                playlist = [song];
+                loadedIds.clear(); loadedTitleKeys.clear();
+                loadedIds.add(song.id);
+                loadedTitleKeys.add(getTitleKey(song));
+                currentIndex = 0;
+                play(0);
+                if (autoRecommendations) fetchRadio(song.id);
             }
-        }
+        } catch(e) { console.error('startSearchSong error:', e); }
     }
 
+    // ── Smart Recommendations ─────────────────────────────────────────────────
+    // Fetches a batch of 5 songs. Called only when:
+    //  a) ≤5 songs remain in queue
+    //  b) Current song has < 60s left
+    //  c) User presses next on the last song
+    const RADIO_BATCH = 5;
+
     async function fetchRadio(songId) {
-        if (!autoRecommendations) return;
+        if (!autoRecommendations || isAlbumPlaylist) return;
         if (isFetching) return;
         isFetching = true;
         document.getElementById('radioLoader').style.display = 'block';
+        const isEnglish = currentLang === 'english';
         try {
-            const res = await fetch(`https://jiosaavan-api-2-harsh-patel.vercel.app/api/songs/${songId}/suggestions`);
-            const json = await res.json();
-            if (json.success && json.data) {
-                const fresh = json.data.filter(s => !loadedIds.has(s.id));
-                fresh.forEach(s => { loadedIds.add(s.id); playlist.push(s); });
-                render();
-                if (albumComplete) {
-                    albumComplete = false;
-                    next();
+            let freshSongs = [];
+
+            // Step 1: suggestions endpoint
+            try {
+                const json = await apiFetch(`/songs/suggestions?id=${songId}&limit=15`);
+                const suggData = Array.isArray(json.data) ? json.data : (json.data?.results || []);
+                if (json.success && suggData.length > 0) {
+                    const candidates = suggData.filter(s => s.id && !loadedIds.has(s.id) && !loadedTitleKeys.has(getTitleKey(s)));
+                    if (isEnglish) {
+                        freshSongs = candidates;
+                    } else {
+                        const langF = candidates.filter(s => !s.language || s.language.toLowerCase() === currentLang);
+                        freshSongs = langF.length >= 3 ? langF : candidates;
+                    }
+                }
+            } catch(e) { /* fall through */ }
+
+            // Step 2: search-based fallback
+            if (freshSongs.length < RADIO_BATCH) {
+                const song       = playlist.find(s => s.id === songId) || currentSongData;
+                const artistName = song ? getArtistName(song).split(',')[0].trim() : '';
+                const { query: langQ } = trendingPlaylists[currentLang] || trendingPlaylists.hindi;
+                const queries = [
+                    artistName ? `${artistName} ${currentLang}` : null,
+                    langQ
+                ].filter(Boolean);
+
+                for (const q of queries) {
+                    if (freshSongs.length >= RADIO_BATCH * 2) break;
+                    try {
+                        const json = await apiFetch(`/search/songs?query=${encodeURIComponent(q)}&limit=20`);
+                        if (json.success && json.data?.results) {
+                            const lang = currentLang;
+                            freshSongs.push(...normalizeSongs(json.data.results).filter(s => {
+                                if (!s.id || loadedIds.has(s.id) || loadedTitleKeys.has(getTitleKey(s))) return false;
+                                if (isEnglish) return true;
+                                return !s.language || s.language.toLowerCase() === lang;
+                            }));
+                        }
+                    } catch(e) { /* skip */ }
                 }
             }
-        } catch (e) { console.error(e); } finally {
+
+            // Add only first RADIO_BATCH unique songs (dedup by ID AND title+artist)
+            let added = 0;
+            for (const s of freshSongs) {
+                if (added >= RADIO_BATCH) break;
+                const key = getTitleKey(s);
+                if (!loadedIds.has(s.id) && !loadedTitleKeys.has(key)) {
+                    loadedIds.add(s.id);
+                    loadedTitleKeys.add(key);
+                    playlist.push(s);
+                    added++;
+                }
+            }
+
+            render();
+            if (albumComplete && added > 0) {
+                albumComplete = false;
+                next();
+            }
+        } catch(e) { console.error('fetchRadio error:', e); } finally {
             isFetching = false;
             document.getElementById('radioLoader').style.display = 'none';
         }
     }
+
+    function shouldPrefetch() {
+        // Fetch more if ≤5 songs left in queue
+        return playlist.length - currentIndex <= 5;
+    }
+
+    // ── Playback ─────────────────────────────────────────────────────────────
 
     function loadSongUI(index) {
         if (!playlist[index]) return;
         currentIndex = index;
         const s = playlist[index];
         currentSongData = s;
-        document.getElementById('mainTitle').innerText = s.name || s.title;
-        document.getElementById('mainArtist').innerText = getArtistName(s) + ' • ' + getAlbumName(s);
+        const title  = cleanTitle(s.name || s.title);
+        const artist = cleanArtist(getArtistName(s));
+        const album  = cleanTitle(getAlbumName(s));
+        document.getElementById('mainTitle').innerText  = title;
+        document.getElementById('mainArtist').innerText = artist + (album ? ' · ' + album : '');
         document.getElementById('mainImg').src = s.image[s.image.length-1].url;
         audio.src = s.downloadUrl[s.downloadUrl.length-1].url;
         updateMediaSession(s);
-        fetchLyrics(s.name || s.title, getArtistName(s));
+        fetchLyrics(title, artist);
         render();
         scrollActiveToTop();
     }
 
     function play(index) {
         loadSongUI(index);
-        audio.play().catch(err => console.log(err));
+        audio.play().catch(e => console.log(e));
         document.getElementById('playIcon').className = "fas fa-pause";
-        if (autoRecommendations && !isAlbumPlaylist) {
-            if (playlist.length - index < 8) fetchRadio(playlist[index].id);
+        if (autoRecommendations && !isAlbumPlaylist && shouldPrefetch()) {
+            fetchRadio(playlist[index].id);
         }
     }
 
     function render() {
         const trackHTML = playlist.map((s, i) => `
             <div id="track-${i}" class="track-item ${i === currentIndex ? 'active' : ''}" onclick="play(${i})">
-                <img src="${s.image[0].url}">
-                <div style="flex:1; overflow:hidden">
-                    <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:0.9rem;">${s.name || s.title}</div>
-                    <div style="font-size:0.75rem; opacity:0.7">${getArtistName(s)}</div>
+                <img src="${s.image[0].url}" onerror="this.style.background='#222'">
+                <div style="flex:1;overflow:hidden;min-width:0;">
+                    <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.9rem;">${cleanTitle(s.name || s.title)}</div>
+                    <div style="font-size:0.75rem;opacity:0.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cleanArtist(getArtistName(s))}</div>
                 </div>
             </div>
         `).join('');
@@ -1050,31 +1353,46 @@
             document.getElementById('playIcon').className = "fas fa-play";
         }
     }
-    
-    function next() { 
+
+    function next() {
         if (currentIndex < playlist.length - 1) {
             play(currentIndex + 1);
-        } else if (autoRecommendations) {
-            albumComplete = true; 
+        } else if (autoRecommendations && !isAlbumPlaylist) {
+            albumComplete = true;
             if (playlist[currentIndex]) fetchRadio(playlist[currentIndex].id);
         }
     }
-    
+
     function prev() { if (currentIndex > 0) play(currentIndex - 1); }
     function changeVol(v) { audio.volume = v; }
-    function seek(e) {
-        const rect = e.currentTarget.getBoundingClientRect();
-        audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+
+    function seekRange(val) {
+        if (audio.duration) audio.currentTime = (val / 1000) * audio.duration;
+    }
+
+    function updateProgress() {
+        const cur = audio.currentTime, dur = audio.duration;
+        const pct = dur ? (cur / dur * 100) : 0;
+        const range = document.getElementById('progressRange');
+        if (range && !range.matches(':active')) {
+            range.value = dur ? (cur / dur * 1000) : 0;
+            range.style.setProperty('--prog', pct.toFixed(2) + '%');
+        }
+        document.getElementById('curTime').innerText = fmt(cur);
+        document.getElementById('durTime').innerText = fmt(dur);
     }
 
     audio.ontimeupdate = () => {
-        const currentTime = audio.currentTime;
-        const progress = (currentTime / audio.duration * 100) || 0;
-        document.getElementById('progFill').style.width = progress + '%';
-        document.getElementById('curTime').innerText = fmt(currentTime);
-        document.getElementById('durTime').innerText = fmt(audio.duration);
+        updateProgress();
+        const cur = audio.currentTime, dur = audio.duration;
+        // Prefetch when < 60s remaining AND ≤5 songs in queue
+        if (autoRecommendations && !isAlbumPlaylist && !isFetching &&
+            dur > 0 && (dur - cur) < 60 && shouldPrefetch()) {
+            fetchRadio(playlist[currentIndex]?.id);
+        }
+        // Synced lyrics
         if (parsedLyrics.length > 0) {
-            const activeLine = parsedLyrics.reduce((prev, curr) => (curr.time <= currentTime) ? curr : prev, null);
+            const activeLine = parsedLyrics.reduce((prev, curr) => (curr.time <= cur) ? curr : prev, null);
             if (activeLine) {
                 document.querySelectorAll('.lyric-line').forEach(el => el.classList.remove('active'));
                 activeLine.element.classList.add('active');
@@ -1082,17 +1400,16 @@
             }
         }
     };
-    
+
     audio.onended = next;
-    
+
     function fmt(s) {
-        if(!s || isNaN(s)) return "0:00";
-        const m = Math.floor(s/60);
-        const sec = Math.floor(s%60);
+        if (!s || isNaN(s)) return "0:00";
+        const m = Math.floor(s / 60), sec = Math.floor(s % 60);
         return `${m}:${sec < 10 ? '0' : ''}${sec}`;
     }
 
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', e => {
         if (!e.target.closest('.search-container')) document.getElementById('sugBox').style.display = 'none';
     });
 
